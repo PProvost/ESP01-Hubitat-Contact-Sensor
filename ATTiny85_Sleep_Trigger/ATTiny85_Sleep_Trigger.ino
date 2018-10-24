@@ -1,54 +1,58 @@
-/*
- * Pin Change Interrupt Example
- * Version: 1.0
- * Author: Alex from Inside Gadgets (http://www.insidegadgets.com)
- * Created: 25/02/2011
- *
- * Demonstration of the pin change interrupt
- * LED on digital pin 0
- * Interrupt on digital pin 1
- * 10k resistor on digital pin 1 to GND (pulldown)
- *
- */
+// ATtiny85 sleep mode, wake on pin change interrupt demo
+// Author: Nick Gammon
+// Date: 12 October 2013
+
+// ATMEL ATTINY 25/45/85 / ARDUINO
+//
+//                  +-\/-+
+// Ain0 (D 5) PB5  1|    |8  Vcc
+// Ain3 (D 3) PB3  2|    |7  PB2 (D 2) Ain1
+// Ain2 (D 4) PB4  3|    |6  PB1 (D 1) pwm1
+//            GND  4|    |5  PB0 (D 0) pwm0
+//                  +----+
+
+#include <avr/sleep.h>    // Sleep Modes
+#include <avr/power.h>    // Power management
+
+const byte LED = 3;  // pin 2
+const byte SWITCH = 4; // pin 3 / PCINT4
+#define PULSE_LEN 250
+
+ISR (PCINT0_vect) 
+ {
+ // do something interesting here
+ }
  
-#include <avr/sleep.h>
-
-#ifndef cbi
-#define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
-#endif
-#ifndef sbi
-#define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
-#endif
-
-int pinLed = 0;
-
-void setup(){
-  pinMode(pinLed,OUTPUT);
-  pinMode(1,INPUT);
+void setup ()
+  {
+  pinMode (LED, OUTPUT);
+  pinMode (SWITCH, INPUT);
+  digitalWrite (SWITCH, HIGH);  // internal pull-up
   
-  sbi(GIMSK,PCIE); // Turn on Pin Change interrupt
-  sbi(PCMSK,PCINT1); // Which pins are affected by the interrupt
-}
+  // pin change interrupt (example for D4)
+  PCMSK  |= bit (PCINT4);  // want pin D4 / pin 3
+  GIFR   |= bit (PCIF);    // clear any outstanding interrupts
+  GIMSK  |= bit (PCIE);    // enable pin change interrupts 
+  
+  }  // end of setup
 
-void loop(){
-  digitalWrite(pinLed,LOW); // low pulse
-  delay(100);
-  digitalWrite(pinLed,HIGH);  // pull high to start
-  delay(100);
-  digitalWrite(pinLed,LOW); // low pulse
-
-  system_sleep();
-}
-
-// From http://interface.khm.de/index.php/lab/experiments/sleep_watchdog_battery/
-void system_sleep() {
-  cbi(ADCSRA,ADEN); // Switch Analog to Digital converter OFF
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN); // Set sleep mode
-  sleep_mode(); // System sleeps here
-  sbi(ADCSRA,ADEN);  // Switch Analog to Digital converter ON
-}
-
-ISR(PCINT0_vect) {
-}
-
-
+void loop ()
+  {
+  digitalWrite (LED, HIGH);
+  delay (PULSE_LEN); 
+  digitalWrite (LED, LOW);
+  // delay (500); 
+  goToSleep ();
+  }  // end of loop
+  
+  
+void goToSleep ()
+  {
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  ADCSRA = 0;            // turn off ADC
+  power_all_disable ();  // power off ADC, Timer 0 and 1, serial interface
+  sleep_enable();
+  sleep_cpu();                             
+  sleep_disable();   
+  power_all_enable();    // power everything back on
+  }  // end of goToSleep 
