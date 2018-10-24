@@ -1,324 +1,95 @@
-// CPU : 80MHz, FLASH : 4M/1M
-#include <ESP8266WiFi.h>
 #include <SmartThingsESP8266WiFi.h>
 
-// #include <PubSubClient.h>
-
-// AP ssid/passwd
-#include "../../ap_setting.h"
-
-extern "C"
-{
-#include "gpio.h"
-#include "user_interface.h"
-}
-
-#define RST_PIN 16
-#define DOOR_PIN 4
-#define DOOR_INT_PIN 5
-
-/*
-Circuit Label 	Sketch Pin
-GPIO IN	        DOOR_PIN
-LIGHT SLEEP IN	DOOR_INT_PIN
-16	            RST_PIN
-RST	            not in sketch, use RST on the board
+/* 
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>
 */
 
-// for battery check
-ADC_MODE(ADC_VCC);
-
-#define INFO_PRINT 1
-
-// static ip for fast wifi conn
-#define IPSET_STATIC  \
-  {                   \
-    192, 168, 135, 99 \
-  }
-#define IPSET_GATEWAY \
-  {                   \
-    192, 168, 135, 1  \
-  }
-#define IPSET_SUBNET \
-  {                  \
-    255, 255, 255, 0 \
-  }
-#define IPSET_DNS    \
-  {                  \
-    192, 168, 135, 1 \
-  }
-#define IPSET_HUB    \
-  {                  \
-    192, 168, 135, 2 \
-  }
-
-IPAddress ip_static = IPSET_STATIC;
-IPAddress ip_gateway = IPSET_GATEWAY;
-IPAddress ip_subnet = IPSET_SUBNET;
-IPAddress ip_dns = IPSET_DNS;
-IPAddress ip_hub = IPSET_HUB;
-const unsigned int serverPort = 8090;
-const unsigned int hubPort = 39501;
-
-// wifi
-const char ssid[] = WIFI_SSID;
-const char password[] = WIFI_PASSWORD;
-
-char *topic = "sensor/door";
-
-String clientName, payload;
-
-unsigned long startMills;
-unsigned int vbatt;
-bool door_closed;
+#define PIN_LED 0 // build in LED on Huzzah
+#define PIN_CONTACT 4
 
 // Forward declaration
 void messageCallout(String message);
 
-WiFiClient wifiClient;
-st::SmartThingsESP8266WiFi smartthing(ssid, password, ip_static, ip_gateway, ip_subnet, ip_dns, serverPort, ip_hub, hubPort, messageCallout);
-// PubSubClient client(mqtt_server, 1883, wifiClient);
+String str_ssid = "Provost-Mesh";
+String str_password = "cra6ga12o4doph09";
+IPAddress ip(192, 168, 135, 202);
+IPAddress gateway(192, 168, 135, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dnsserver(192, 168, 135, 1);
+const unsigned int serverPort = 8090;
 
-void messageCallout(String message)
+// Hub Information
+IPAddress hubIp(192, 168, 135, 2);
+const unsigned int hubPort = 39501;
+
+//Create a SmartThings Ethernet ESP8266WiFi object
+// st::SmartThingsESP8266WiFi smartthing(str_ssid, str_password, ip, gateway, subnet, dnsserver, serverPort, hubIp, hubPort, messageCallout);
+
+bool isDebugEnabled; // enable or disable debug in this example
+
+int contactState = false;
+
+void updateContactState(int currentContactState)
 {
-  Serial.print("Received message: '");
-  Serial.print(message);
-  Serial.println("' ");
-}
+    contactState = currentContactState;
+    String state = (contactState ? String("{ \"contact\":\"closed\" }") : String("{ \"contact\":\"open\" }"));
+    // Serial.printf("State changed: %s\r\n", state.c_str());
 
-void goingToSleep()
-{
-  yield();
-  Serial.println("going to deepsleep");
-  delay(100);
-  ESP.deepSleep(0);
-  yield();
-}
+    if (contactState) // true means closed
+        digitalWrite(PIN_LED, LOW);
+    else
+        digitalWrite(PIN_LED, HIGH);
 
-String macToStr(const uint8_t *mac)
-{
-  String result;
-  for (int i = 0; i < 6; ++i)
-  {
-    result += String(mac[i], 16);
-    if (i < 5)
-      result += ':';
-  }
-  return result;
-}
-
-void wifi_connect()
-{
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    WiFiClient::setLocalPortStart(micros() + vbatt);
-    wifi_set_opmode(STATION_MODE);
-    wifi_station_connect();
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    WiFi.config(ip_static, ip_gateway, ip_subnet, ip_dns);
-    WiFi.hostname("esp-door-sensor");
-
-    int Attempt = 0;
-    while (WiFi.status() != WL_CONNECTED)
-    {
-      delay(100);
-      Attempt++;
-      if (Attempt == 150)
-      {
-        Serial.println("wifi conn fail");
-        break;
-      }
-    }
-    Serial.println("wifi connected");
-  }
-}
-
-/*
-boolean mqtt_publish(char* topic_tosend, String payload_tosend) {
-  if (WiFi.status() == WL_CONNECTED) {
-    if (client.connect((char*) clientName.c_str())) {
-      unsigned int msg_length = payload_tosend.length();
-      byte* p = (byte*)malloc(msg_length);
-      memcpy(p, (char*) payload_tosend.c_str(), msg_length);
-
-      if (client.publish(topic_tosend, p, msg_length, 1)) {
-        free(p);
-        client.disconnect();
-        Serial.println(payload_tosend);
-        return 1;
-      } else {
-        free(p);
-        client.disconnect();
-        return 0;
-      }
-    } else {
-      Serial.println("mqtt conn failed");
-      return 0;
-    }
-  } else {
-    Serial.println("wifi not connected");
-    wifi_connect();
-    return 0;
-  }
-}
-*/
-
-boolean sendMsg(char *topic_tosend, String payload_tosend)
-{
-  /*
-  int Attempt = 0;
-  while (mqtt_publish(topic, payload) == 0) {
-    delay(100);
-    Attempt++;
-    if (Attempt == 5) {
-      Serial.println("mqtt pub failed");
-      break;
-    }
-  }
-  */
-  Serial.printf("sendMsg: (%s) %s\r\n", topic_tosend, payload_tosend.c_str());
+    // smartthing.send(state);
 }
 
 void setup()
 {
-  Serial.begin(115200);
-  Serial.println("");
+    // Serial.begin(115200);
+    // Serial.println("");
+    // Serial.println("setup..");
 
-  startMills = millis();
-  vbatt = ESP.getVcc() * 0.96;
-  // to cut out reset line, normaly don't need
-  // pinMode(RST_PIN, OUTPUT);
-  // digitalWrite(RST_PIN, LOW);
+    pinMode(16, OUTPUT);
+    digitalWrite(16, LOW);
 
-  // input of door switch, closed : 1, open : 0
-  pinMode(DOOR_PIN, INPUT);
+    // setup hardware pins
+    pinMode(PIN_CONTACT, INPUT_PULLUP);
 
-  clientName += "esp8266-";
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  clientName += macToStr(mac);
-  clientName += "-";
-  clientName += String(micros() & 0xff, 16);
+    pinMode(PIN_LED, OUTPUT);    // define PIN_LED as an output
+    digitalWrite(PIN_LED, HIGH); // set value to HIGH
 
-  WiFi.setAutoConnect(true);
-  wifi_connect();
+    //Run the SmartThings init() routine to make sure the ThingShield is connected to the ST Hub
+    // smartthing.init();
 
-  door_closed = digitalRead(DOOR_PIN);
+    int currentContactState = digitalRead(PIN_CONTACT);
+    updateContactState(currentContactState);
 
-  payload = "{\"vbatt\":";
-  payload += vbatt;
-  payload += ",\"millis\":";
-  payload += (millis() - startMills);
-  payload += ",\"door_closed\":";
-  payload += door_closed;
-  payload += "}";
-
-  sendMsg(topic, payload);
-
-  // if door_closed = 0 : door is opened, or power on while door is opened.
-  // ==> wait 10 sec or INT, alarm door is opened too long, wait till door is closed. Because don't have int or reset when door is closed.
-  // if door_closed = 1 : door is closed, or power on while door is closed.
-  // ==> going to deep sleep.
-  //
-
-  // door is closed
-  if (door_closed == true)
-  {
-    goingToSleep();
-  }
+    // Serial.println("Sending update to ST");
+    // smartthing.run();
 }
 
 void loop()
 {
-  // modem sleep
-  Serial.println("going to modem sleep / 10sec");
-  // client.disconnect();
-  wifi_station_disconnect();
-  wifi_set_opmode(NULL_MODE);
-  wifi_set_sleep_type(MODEM_SLEEP_T);
-  wifi_fpm_open();
-  wifi_fpm_do_sleep(0xFFFFFFF);
+    delay(500);
 
-  // check door status
-  int cnt = 200;
-  while (cnt != 0)
-  {
-    if (door_closed != digitalRead(DOOR_PIN))
-    {
-      break;
-    }
-    delay(50);
-    cnt--;
-  }
+    // Serial.println("Going to sleep");
+    digitalWrite(PIN_LED, LOW);
 
-  // wake up to use WiFi again
-  wifi_fpm_do_wakeup();
-  wifi_fpm_close();
-
-  wifi_set_opmode(STATION_MODE);
-  wifi_station_connect();
-  wifi_connect();
-
-  door_closed = digitalRead(DOOR_PIN);
-  // door is closed
-  if (door_closed == true)
-  {
-    payload = "{\"vbatt\":";
-    payload += vbatt;
-    payload += ",\"millis\":";
-    payload += (millis() - startMills);
-    payload += ",\"door_closed\":";
-    payload += door_closed;
-    payload += "}";
-
-    sendMsg(topic, payload);
-    goingToSleep();
-  }
-  else
-  {
-    payload = "{\"vbatt\":";
-    payload += vbatt;
-    payload += ",\"millis\":";
-    payload += (millis() - startMills);
-    payload += ",\"door_closed\":";
-    payload += door_closed;
-    payload += ",\"too_long\":";
-    payload += true;
-    payload += "}";
-
-    sendMsg(topic, payload);
-  }
-
-  Serial.println("going to light sleep / 0xFFFFFFF");
-  delay(100);
-  wifi_station_disconnect();
-  wifi_set_opmode(NULL_MODE);
-  wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
-  wifi_fpm_open();
-  gpio_pin_wakeup_enable(GPIO_ID_PIN(DOOR_INT_PIN), GPIO_PIN_INTR_HILEVEL);
-  wifi_fpm_do_sleep(0xFFFFFFF);
-  delay(200);
-
-  gpio_pin_wakeup_disable();
-  Serial.println("wake up / 0xFFFFFFF");
-  wifi_fpm_close();
-  wifi_set_opmode(STATION_MODE);
-  wifi_station_connect();
-  wifi_connect();
-  delay(100);
-  door_closed = digitalRead(DOOR_PIN);
-
-  payload = "{\"vbatt\":";
-  payload += vbatt;
-  payload += ",\"millis\":";
-  payload += (millis() - startMills);
-  payload += ",\"door_closed\":";
-  payload += door_closed;
-  payload += "}";
-
-  sendMsg(topic, payload);
-  delay(100);
-  goingToSleep();
+    yield();
+    delay(100);
+    ESP.deepSleep(0);
+    yield();
 }
 
+void messageCallout(String message)
+{
+    // if debug is enabled print out the received message
+    if (isDebugEnabled)
+    {
+        // Serial.print("Received message: '");
+        // Serial.print(message);
+        // Serial.println("' ");
+    }
+}
