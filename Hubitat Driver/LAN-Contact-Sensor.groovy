@@ -1,17 +1,18 @@
 import groovy.json.JsonSlurper
 
 metadata {
-	definition (name: "HTTP Test Switch", namespace: "pprovost", author: "Peter Provost") {
-        capability "Contact Sensor"
+	definition (name: "ESP8266 Motion Sensor", namespace: "pprovost", author: "Peter Provost") {
+        capability "Motion Sensor"
         capability "Sensor"
         capability "Signal Strength"
+        capability "Battery"
         
         attribute "lastUpdated", "String"
 	}
 
 	preferences {
-		input(name: "deviceIP", type: "string", title:"Device IP Address", description: "Enter IP Address of your HTTP server", required: true, displayDuringSetup: true)
-		input(name: "devicePort", type: "string", title:"Device Port", description: "Enter Port of your HTTP server (defaults to 80)", defaultValue: "80", required: false, displayDuringSetup: true)
+		input(name: "deviceIP", type: "string", title:"Device IP Address", description: "Enter IP Address of your device", required: true, displayDuringSetup: true)
+		input(name: "devicePort", type: "string", title:"Device Port", description: "Enter Port of your device (defaults to 80)", defaultValue: "80", required: false, displayDuringSetup: true)
 	}
 }
 
