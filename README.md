@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ESP01 Hubitat Contact Sensor
 
 This project is derived from and inspired by many excellent examples found on the web, including (but not limited to):
@@ -64,3 +65,7 @@ Once the board is confirmed working, I will also design a 3D printed enclosure f
     above [4], but you may still need to remove the 1k resistor.
 
 
+=======
+# ESP-Hubitat-Contact-Switch
+Very low power, interrupt driven, deep sleep enabled ESP8266 + door/window contact switch for Hubitat/SmartThings
+>>>>>>> 063269fa756380e0b7a1bc3de55c39887778574b
